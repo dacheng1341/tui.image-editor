@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>0. Design</title>
+    <title>VectorSlice - 高级向量切片与图片编辑器 | 大程开源百宝箱</title>
+    <meta name="description" content="VectorSlice 是一款开源的在线图片编辑器与高级向量切片工具，支持图片裁剪、滤镜、文本、图层管理以及类似Figma的矢量形状透明切片导出功能。由大程开源百宝箱提供。">
+    <meta name="keywords" content="VectorSlice, 在线图片编辑, 向量切片, 图片裁剪, tui.image-editor, 大程开源百宝箱, dacbbox">
     <link
       type="text/css"
       href="https://uicdn.toast.com/tui-color-picker/v2.2.6/tui-color-picker.css"
@@ -16,10 +18,45 @@
         height: 100%;
         margin: 0;
       }
+      .custom-nav-panel {
+        position: absolute;
+        top: 70px;
+        right: 20px;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .custom-nav-btn {
+        background: #00a9ff;
+        color: #fff;
+        padding: 10px 15px;
+        text-decoration: none;
+        border-radius: 6px;
+        font-family: 'Noto Sans', sans-serif;
+        font-weight: bold;
+        font-size: 14px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        transition: background 0.2s, transform 0.1s;
+        text-align: center;
+      }
+      .custom-nav-btn:hover {
+        background: #008cd4;
+        transform: translateY(-2px);
+      }
+      .custom-nav-btn.btn-main {
+        background: #ff5722;
+      }
+      .custom-nav-btn.btn-main:hover {
+        background: #e64a19;
+      }
     </style>
   </head>
   <body>
-    <div style="position: absolute; top: 10px; right: 10px; z-index: 1000;"><a href="example04-slice.html" style="background: #00a9ff; color: #fff; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-family: sans-serif; font-weight: bold;">➡️ 切换到切片模式 (Go to Slice Mode)</a></div>
+    <div class="custom-nav-panel">
+      <a href="example04-slice.html" class="custom-nav-btn">➡️ 进入切片模式 (Slice Mode)</a>
+      <a href="https://dacbbox.com" target="_blank" class="custom-nav-btn btn-main">🏠 大程开源百宝箱 (dacbbox.com)</a>
+    </div>
     <div id="tui-image-editor-container"></div>
     <script
       type="text/javascript"

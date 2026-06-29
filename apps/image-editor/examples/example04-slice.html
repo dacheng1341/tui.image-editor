@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>4. Advanced Figma-like Slice Export</title>
+    <title>VectorSlice - 高级向量切片 | 大程开源百宝箱</title>
+    <meta name="description" content="VectorSlice 切片模式，支持Figma级别的矩形、圆形、三角形透明切片导出，自动识别图层信息并批量下载，开源免费，由大程开源百宝箱提供支持。">
     <link
       type="text/css"
       href="https://uicdn.toast.com/tui-color-picker/v2.2.6/tui-color-picker.css"
@@ -104,11 +105,44 @@
       .slice-panel .btn-copy:hover {
         background: #f0f8ff;
       }
+      .custom-nav-panel {
+        position: absolute;
+        top: 70px;
+        left: 20px;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .custom-nav-btn {
+        background: #333;
+        color: #fff;
+        padding: 10px 15px;
+        text-decoration: none;
+        border-radius: 6px;
+        font-family: 'Noto Sans', sans-serif;
+        font-weight: bold;
+        font-size: 14px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        transition: background 0.2s, transform 0.1s;
+        text-align: center;
+      }
+      .custom-nav-btn:hover {
+        background: #555;
+        transform: translateY(-2px);
+      }
+      .custom-nav-btn.btn-main {
+        background: #ff5722;
+      }
+      .custom-nav-btn.btn-main:hover {
+        background: #e64a19;
+      }
     </style>
   </head>
   <body>
-    <div style="position: absolute; top: 10px; left: 10px; z-index: 1000;">
-        <a href="example01-includeUi.html" style="background: #333; color: #fff; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-family: sans-serif; font-weight: bold;">⬅️ 返回主页 (Back to Home)</a>
+    <div class="custom-nav-panel">
+      <a href="example01-includeUi.html" class="custom-nav-btn">⬅️ 返回主页 (Back to Home)</a>
+      <a href="https://dacbbox.com" target="_blank" class="custom-nav-btn btn-main">🏠 大程开源百宝箱 (dacbbox.com)</a>
     </div>
     
     <div class="slice-bar">
