@@ -112,13 +112,13 @@
     </div>
     
     <div class="slice-bar">
-      <div class="info">使用方法：使用 Shape 工具画任意形状（矩形/圆形/三角形）作为切片，调整好后选中它，可以修改尺寸或直接导出。</div>
+      <div class="info">使用方法：使用 Shape 工具画任意形状作为切片，调整好后选中它，可以修改尺寸或直接导出。</div>
       <button id="btn-export-slices">批量导出切片 (Batch Export)</button>
     </div>
     
     <div class="slice-panel" id="slice-panel">
       <h4>切片属性 (Slice Export)</h4>
-      <div style="font-size: 11px; color: #999; margin-bottom: 10px;">基于原图的实际分辨率</div>
+      <div style="font-size: 11px; color: #999; margin-bottom: 10px;">基于原图的实际物理像素</div>
       <div class="input-group">
         <span id="label-w">宽度 (W)</span>
         <input type="number" id="slice-w" min="1" step="1" />
@@ -190,7 +190,6 @@
       var labelW = document.getElementById('label-w');
       var labelH = document.getElementById('label-h');
       
-      // Get all shape objects
       function getSliceObjects() {
           var fabricCanvas = imageEditor._graphics.getCanvas();
           return fabricCanvas.getObjects().filter(function(o) {
@@ -198,7 +197,6 @@
           });
       }
       
-      // Dynamic labels
       function updatePanelLabels(type) {
           if (type === 'circle') {
               labelW.innerText = '半径X (Rx)';
@@ -212,24 +210,29 @@
           }
       }
 
-      // Update inputs
       function updateInputsFromObject(id) {
           if (isUpdatingInput) return;
-          var fabricCanvas = imageEditor._graphics.getCanvas();
-          var obj = fabricCanvas.getObjects().find(function(o) { return o.id === id; });
-          if (obj) {
-              var w = obj.width * obj.scaleX;
-              var h = obj.height * obj.scaleY;
+          try {
+              // Always use loose equality to find the object safely
+              var fabricCanvas = imageEditor._graphics.getCanvas();
+              var obj = fabricCanvas.getObjects().find(function(o) { return o.id == id; });
               
-              updatePanelLabels(obj.type);
-              
-              if (obj.type === 'circle') {
-                  inputW.value = Math.max(1, Math.round(w / 2));
-                  inputH.value = Math.max(1, Math.round(h / 2));
-              } else {
-                  inputW.value = Math.max(1, Math.round(w));
-                  inputH.value = Math.max(1, Math.round(h));
+              if (obj) {
+                  var w = obj.width * obj.scaleX;
+                  var h = obj.height * obj.scaleY;
+                  
+                  updatePanelLabels(obj.type);
+                  
+                  if (obj.type === 'circle') {
+                      inputW.value = Math.max(1, Math.round(w / 2));
+                      inputH.value = Math.max(1, Math.round(h / 2));
+                  } else {
+                      inputW.value = Math.max(1, Math.round(w));
+                      inputH.value = Math.max(1, Math.round(h));
+                  }
               }
+          } catch(e) {
+              console.error(e);
           }
       }
 
@@ -239,12 +242,12 @@
               setTimeout(function() {
                   var fabricCanvas = imageEditor._graphics.getCanvas();
                   var activeObj = fabricCanvas.getActiveObject();
-                  if (activeObj && activeObj.id === props.id) {
+                  if (activeObj && activeObj.id == props.id) {
                       activeSliceId = props.id;
                       slicePanel.style.display = 'flex';
                       updateInputsFromObject(props.id);
                   }
-              }, 100);
+              }, 150);
           }
       });
 
@@ -265,12 +268,11 @@
       });
       
       imageEditor.on('objectScaled', function(props) {
-          if (activeSliceId === props.id) {
+          if (activeSliceId == props.id) {
               updateInputsFromObject(props.id);
           }
       });
 
-      // Resize from inputs
       function applyInputSize() {
           if (!activeSliceId) return;
           var newW = parseFloat(inputW.value);
@@ -279,7 +281,8 @@
           
           isUpdatingInput = true;
           var fabricCanvas = imageEditor._graphics.getCanvas();
-          var obj = fabricCanvas.getObjects().find(function(o) { return o.id === activeSliceId; });
+          var obj = fabricCanvas.getObjects().find(function(o) { return o.id == activeSliceId; });
+          
           if (obj) {
               var targetW = obj.type === 'circle' ? newW * 2 : newW;
               var targetH = obj.type === 'circle' ? newH * 2 : newH;
@@ -294,8 +297,8 @@
           isUpdatingInput = false;
       }
       
-      inputW.addEventListener('change', applyInputSize);
-      inputH.addEventListener('change', applyInputSize);
+      inputW.addEventListener('input', applyInputSize);
+      inputH.addEventListener('input', applyInputSize);
 
       function base64ToBlob(data) {
         var mimeString = '';
@@ -311,7 +314,6 @@
         return new Blob([uInt8Array], { type: mimeString });
       }
 
-      // Offscreen masking for circle and triangle transparency
       function maskImageWithShape(dataUrl, shapeType) {
           return new Promise(function(resolve, reject) {
               var img = new Image();
@@ -321,11 +323,9 @@
                   canvas.height = img.height;
                   var ctx = canvas.getContext('2d');
                   
-                  // Draw the rectangular slice
                   ctx.drawImage(img, 0, 0);
-                  
-                  // Use destination-in to crop the transparent background
                   ctx.globalCompositeOperation = 'destination-in';
+                  
                   ctx.fillStyle = 'black';
                   ctx.beginPath();
                   
@@ -348,15 +348,17 @@
                   
                   resolve(canvas.toDataURL('image/png'));
               };
-              img.onerror = reject;
+              img.onerror = function(err) {
+                  console.error('Image load failed for masking', err);
+                  resolve(dataUrl); // fallback to rectangular image
+              };
               img.src = dataUrl;
           });
       }
 
-      // Safe export logic
       async function exportSliceDataUrl(id, scaleMultiplier) {
           var fabricCanvas = imageEditor._graphics.getCanvas();
-          var sliceObj = fabricCanvas.getObjects().find(function(o) { return o.id === id; });
+          var sliceObj = fabricCanvas.getObjects().find(function(o) { return o.id == id; });
           if (!sliceObj) return null;
 
           var rect = sliceObj.getBoundingRect();
@@ -392,7 +394,6 @@
           return dataUrl;
       }
 
-      // Batch Export
       document.getElementById('btn-export-slices').addEventListener('click', async function() {
           var slices = getSliceObjects();
           var scale = parseFloat(selectScale.value) || 1;
@@ -412,7 +413,8 @@
               try {
                   var dataUrl = await exportSliceDataUrl(slices[i].id, scale);
                   if (dataUrl) {
-                      saveAs(base64ToBlob(dataUrl), 'slice_' + (i + 1) + '_' + slices[i].type + '@' + scale + 'x.png');
+                      var shapeName = slices[i].type;
+                      saveAs(base64ToBlob(dataUrl), 'slice_' + (i + 1) + '_' + shapeName + '@' + scale + 'x.png');
                       validSlices++;
                   }
               } catch (e) {
@@ -425,20 +427,25 @@
           alert("成功导出了 " + validSlices + " 张切片！");
       });
       
-      // Single Download
       document.getElementById('btn-download-single').addEventListener('click', async function() {
           if (!activeSliceId) return;
           var scale = parseFloat(selectScale.value) || 1;
           var fabricCanvas = imageEditor._graphics.getCanvas();
-          var obj = fabricCanvas.getObjects().find(function(o) { return o.id === activeSliceId; });
+          var obj = fabricCanvas.getObjects().find(function(o) { return o.id == activeSliceId; });
+          
+          var btn = this;
+          var originalText = btn.innerText;
+          btn.innerText = "下载中...";
           
           var dataUrl = await exportSliceDataUrl(activeSliceId, scale);
           if (dataUrl) {
-              saveAs(base64ToBlob(dataUrl), 'slice_' + activeSliceId + '_' + (obj ? obj.type : 'rect') + '@' + scale + 'x.png');
+              var shapeName = obj ? obj.type : 'rect';
+              saveAs(base64ToBlob(dataUrl), 'slice_' + activeSliceId + '_' + shapeName + '@' + scale + 'x.png');
           }
+          
+          btn.innerText = originalText;
       });
       
-      // Copy to Clipboard
       document.getElementById('btn-copy-slice').addEventListener('click', async function() {
           if (!activeSliceId) return;
           
