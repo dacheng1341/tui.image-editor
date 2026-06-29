@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>0. Design</title>
+    <title>0. Design (with Slice Features)</title>
     <link
       type="text/css"
       href="https://uicdn.toast.com/tui-color-picker/v2.2.6/tui-color-picker.css"
@@ -16,9 +16,131 @@
         height: 100%;
         margin: 0;
       }
+      
+      /* Figma-like Slice Export UI */
+      .slice-bar {
+        position: absolute;
+        top: 15px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 10px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        font-family: 'Noto Sans', sans-serif;
+      }
+      .slice-bar button {
+        background: #00a9ff;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      .slice-bar button:hover {
+        background: #008cd4;
+      }
+      .slice-bar .info {
+        font-size: 13px;
+        color: #333;
+        max-width: 400px;
+      }
+      
+      .slice-panel {
+        position: absolute;
+        right: 20px;
+        top: 80px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        font-family: 'Noto Sans', sans-serif;
+        display: none; /* hidden by default */
+        flex-direction: column;
+        gap: 10px;
+        width: 200px;
+      }
+      .slice-panel h4 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #333;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+      }
+      .input-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #666;
+      }
+      .input-group input {
+        width: 60px;
+        padding: 4px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        text-align: right;
+      }
+      .input-group select {
+        padding: 4px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        width: 70px;
+      }
+      .slice-panel .btn-copy {
+        margin-top: 5px;
+        background: #fff;
+        color: #00a9ff;
+        border: 1px solid #00a9ff;
+        padding: 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+        text-align: center;
+      }
+      .slice-panel .btn-copy:hover {
+        background: #f0f8ff;
+      }
     </style>
   </head>
   <body>
+    <!-- Slice Toolbar -->
+    <div class="slice-bar">
+      <div class="info">💡 <b>切片模式 (Slice Mode)</b>: 在底部菜单选择 <b>Shape</b> 画出任意形状(建议Fill设为透明) -> 点击选中该形状 -> 右侧面板修改尺寸或导出！</div>
+      <button id="btn-export-slices">批量导出切片 (Batch Export)</button>
+    </div>
+    
+    <!-- Slice Properties Panel -->
+    <div class="slice-panel" id="slice-panel">
+      <h4>切片属性 (Slice Export)</h4>
+      <div class="input-group">
+        <span>宽度 (W)</span>
+        <input type="number" id="slice-w" min="1" step="1" />
+      </div>
+      <div class="input-group">
+        <span>高度 (H)</span>
+        <input type="number" id="slice-h" min="1" step="1" />
+      </div>
+      <div class="input-group">
+        <span>导出倍率</span>
+        <select id="slice-scale">
+          <option value="1">1x</option>
+          <option value="2">2x</option>
+          <option value="3">3x</option>
+          <option value="4">4x</option>
+        </select>
+      </div>
+      <button class="btn-copy" id="btn-copy-slice">复制到剪贴板 (Copy)</button>
+      <button class="btn-copy" id="btn-download-single">单张下载 (Download)</button>
+    </div>
+
+    <!-- Main Editor -->
     <div id="tui-image-editor-container"></div>
     <script
       type="text/javascript"
@@ -40,24 +162,244 @@
     <script type="text/javascript" src="js/theme/white-theme.js"></script>
     <script type="text/javascript" src="js/theme/black-theme.js"></script>
     <script>
-      // Image editor
+      // Image editor initialization
       var imageEditor = new tui.ImageEditor('#tui-image-editor-container', {
         includeUI: {
           loadImage: {
             path: 'img/sampleImage2.png',
             name: 'SampleImage',
           },
-          theme: blackTheme, // or whiteTheme
-          initMenu: 'filter',
+          theme: blackTheme,
+          initMenu: 'shape',
           menuBarPosition: 'bottom',
         },
         cssMaxWidth: 700,
         cssMaxHeight: 500,
         usageStatistics: false,
       });
+
       window.onresize = function () {
         imageEditor.ui.resizeEditor();
       };
+
+      /* ==========================================
+       * Figma-like Slice Feature Implementation
+       * ========================================== */
+
+      var activeSliceId = null;
+      var isUpdatingInput = false;
+
+      var slicePanel = document.getElementById('slice-panel');
+      var inputW = document.getElementById('slice-w');
+      var inputH = document.getElementById('slice-h');
+      var selectScale = document.getElementById('slice-scale');
+      
+      // Get all shape objects (rect, circle, triangle) that are drawn on canvas
+      function getSliceObjects() {
+          var fabricCanvas = imageEditor._graphics.getCanvas();
+          return fabricCanvas.getObjects().filter(function(o) {
+              return ['rect', 'circle', 'triangle'].indexOf(o.type) > -1 && o.width > 0 && o.height > 0;
+          });
+      }
+
+      // Update input values when an object is selected or modified
+      function updateInputsFromObject(id) {
+          if (isUpdatingInput) return;
+          var fabricCanvas = imageEditor._graphics.getCanvas();
+          var obj = fabricCanvas.getObjects().find(function(o) { return o.id === id; });
+          if (obj) {
+              inputW.value = Math.max(1, Math.round(obj.width * obj.scaleX));
+              inputH.value = Math.max(1, Math.round(obj.height * obj.scaleY));
+          }
+      }
+
+      // Handle object selection
+      imageEditor.on('objectActivated', function(props) {
+          if (['rect', 'circle', 'triangle'].indexOf(props.type) > -1) {
+              activeSliceId = props.id;
+              slicePanel.style.display = 'flex';
+              updateInputsFromObject(props.id);
+          } else {
+              activeSliceId = null;
+              slicePanel.style.display = 'none';
+          }
+      });
+      
+      // Handle object deselection
+      imageEditor.on('selectionCleared', function() {
+          activeSliceId = null;
+          slicePanel.style.display = 'none';
+      });
+      
+      // Handle object scaling via mouse
+      imageEditor.on('objectScaled', function(props) {
+          if (activeSliceId === props.id) {
+              updateInputsFromObject(props.id);
+          }
+      });
+
+      // Apply manually typed dimensions
+      function applyInputSize() {
+          if (!activeSliceId) return;
+          var newW = parseFloat(inputW.value);
+          var newH = parseFloat(inputH.value);
+          if (isNaN(newW) || isNaN(newH) || newW <= 0 || newH <= 0) return;
+          
+          isUpdatingInput = true;
+          var fabricCanvas = imageEditor._graphics.getCanvas();
+          var obj = fabricCanvas.getObjects().find(function(o) { return o.id === activeSliceId; });
+          
+          if (obj) {
+              // Calculate new scale based on desired size
+              var targetScaleX = newW / obj.width;
+              var targetScaleY = newH / obj.height;
+              
+              imageEditor.setObjectPropertiesQuietly(activeSliceId, {
+                  scaleX: targetScaleX,
+                  scaleY: targetScaleY
+              }).then(function() {
+                  fabricCanvas.renderAll();
+                  isUpdatingInput = false;
+              });
+          } else {
+              isUpdatingInput = false;
+          }
+      }
+      
+      inputW.addEventListener('change', applyInputSize);
+      inputH.addEventListener('change', applyInputSize);
+
+      function base64ToBlob(data) {
+        var mimeString = '';
+        var raw, uInt8Array, i, rawLength;
+        raw = data.replace(/data:(image\/.+);base64,/, function (header, imageType) {
+          mimeString = imageType;
+          return '';
+        });
+        raw = atob(raw);
+        rawLength = raw.length;
+        uInt8Array = new Uint8Array(rawLength);
+        for (i = 0; i < rawLength; i += 1) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        return new Blob([uInt8Array], { type: mimeString });
+      }
+
+      // Core Slice Export Logic
+      async function exportSliceDataUrl(id, scaleMultiplier) {
+          var fabricCanvas = imageEditor._graphics.getCanvas();
+          var sliceObj = fabricCanvas.getObjects().find(function(o) { return o.id === id; });
+          if (!sliceObj) return null;
+
+          var rect = sliceObj.getBoundingRect();
+          var oldOpacity = sliceObj.opacity;
+          
+          // Use fabric clone to create a perfect mask
+          var clone = await new Promise(function(resolve) { sliceObj.clone(resolve); });
+          clone.absolutePositioned = true;
+          
+          // Hide slice object
+          await imageEditor.setObjectPropertiesQuietly(id, { opacity: 0 });
+          fabricCanvas.clipPath = clone;
+          fabricCanvas.renderAll();
+          
+          var dataUrl = null;
+          try {
+              dataUrl = imageEditor.toDataURL({
+                  format: 'png',
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                  multiplier: scaleMultiplier
+              });
+          } catch(e) {
+              console.error("Export Failed: ", e);
+          }
+          
+          // Restore canvas state
+          fabricCanvas.clipPath = null;
+          await imageEditor.setObjectPropertiesQuietly(id, { opacity: oldOpacity });
+          fabricCanvas.renderAll();
+          
+          return dataUrl;
+      }
+
+      // Batch Export
+      document.getElementById('btn-export-slices').addEventListener('click', async function() {
+          var slices = getSliceObjects();
+          var scale = parseFloat(selectScale.value) || 1;
+          var validSlices = 0;
+          
+          if(slices.length === 0) {
+              alert("未找到切片形状！请在下方工具栏选择 Shape(形状)，在画布上画几个形状作为切片范围。");
+              return;
+          }
+
+          var btn = this;
+          var originalText = btn.innerText;
+          btn.innerText = "导出中...";
+          btn.disabled = true;
+
+          for (var i = 0; i < slices.length; i++) {
+              try {
+                  var dataUrl = await exportSliceDataUrl(slices[i].id, scale);
+                  if (dataUrl) {
+                      saveAs(base64ToBlob(dataUrl), 'slice_' + (i + 1) + '@' + scale + 'x.png');
+                      validSlices++;
+                  }
+              } catch (e) {
+                  console.error(e);
+              }
+          }
+          
+          btn.innerText = originalText;
+          btn.disabled = false;
+          alert("成功导出了 " + validSlices + " 张切片！");
+      });
+      
+      // Single Download
+      document.getElementById('btn-download-single').addEventListener('click', async function() {
+          if (!activeSliceId) return;
+          var scale = parseFloat(selectScale.value) || 1;
+          var dataUrl = await exportSliceDataUrl(activeSliceId, scale);
+          if (dataUrl) {
+              saveAs(base64ToBlob(dataUrl), 'slice_' + activeSliceId + '@' + scale + 'x.png');
+          }
+      });
+      
+      // Copy to Clipboard
+      document.getElementById('btn-copy-slice').addEventListener('click', async function() {
+          if (!activeSliceId) return;
+          
+          if (!navigator.clipboard || !navigator.clipboard.write) {
+              alert("您的浏览器不支持复制图片到剪贴板，请尝试使用单张下载。");
+              return;
+          }
+          
+          var btn = this;
+          var originalText = btn.innerText;
+          btn.innerText = "复制中...";
+          
+          try {
+              var scale = parseFloat(selectScale.value) || 1;
+              var dataUrl = await exportSliceDataUrl(activeSliceId, scale);
+              if (dataUrl) {
+                  var blob = base64ToBlob(dataUrl);
+                  await navigator.clipboard.write([
+                      new ClipboardItem({
+                          [blob.type]: blob
+                      })
+                  ]);
+                  btn.innerText = "复制成功! (Copied)";
+                  setTimeout(function() { btn.innerText = originalText; }, 2000);
+              }
+          } catch(e) {
+              console.error(e);
+              alert("复制失败: " + e.message);
+              btn.innerText = originalText;
+          }
+      });
     </script>
   </body>
 </html>
