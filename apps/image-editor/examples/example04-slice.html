@@ -137,22 +137,48 @@
       .custom-nav-btn.btn-main:hover {
         background: #e64a19;
       }
+      .custom-nav-btn.btn-lang {
+        background: #4caf50;
+        cursor: pointer;
+        border: none;
+      }
+      .custom-nav-btn.btn-lang:hover {
+        background: #388e3c;
+      }
+
+      /* Hide default logo and add text logo */
+      .tui-image-editor-header-logo img {
+        display: none !important;
+      }
+      .tui-image-editor-header-logo {
+        display: flex !important;
+        align-items: center;
+      }
+      .tui-image-editor-header-logo::after {
+        content: attr(data-logo-text);
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+        font-family: 'Noto Sans', sans-serif;
+        letter-spacing: 1px;
+      }
     </style>
   </head>
   <body>
     <div class="custom-nav-panel">
+      <button id="btn-toggle-lang" class="custom-nav-btn btn-lang"></button>
       <a href="example01-includeUi.html" class="custom-nav-btn">⬅️ 返回主页 (Back to Home)</a>
       <a href="https://dacbbox.com" target="_blank" class="custom-nav-btn btn-main">🏠 大程开源百宝箱 (dacbbox.com)</a>
     </div>
     
     <div class="slice-bar">
-      <div class="info">使用方法：使用 Shape 工具画任意形状作为切片，调整好后选中它，可以修改尺寸或直接导出。</div>
+      <div class="info" id="slice-info-text">使用方法：使用 Shape 工具画任意形状作为切片，调整好后选中它，可以修改尺寸或直接导出。</div>
       <button id="btn-export-slices">批量导出切片 (Batch Export)</button>
     </div>
     
     <div class="slice-panel" id="slice-panel">
-      <h4>切片属性 (Slice Export)</h4>
-      <div style="font-size: 11px; color: #999; margin-bottom: 10px;">基于原图的实际物理像素</div>
+      <h4 id="slice-panel-title">切片属性 (Slice Export)</h4>
+      <div style="font-size: 11px; color: #999; margin-bottom: 10px;" id="slice-panel-desc">基于原图的实际物理像素</div>
       <div class="input-group">
         <span id="label-w">宽度 (W)</span>
         <input type="number" id="slice-w" min="1" step="1" />
@@ -162,7 +188,7 @@
         <input type="number" id="slice-h" min="1" step="1" />
       </div>
       <div class="input-group">
-        <span>导出倍率</span>
+        <span id="slice-scale-label">导出倍率</span>
         <select id="slice-scale">
           <option value="1">1x</option>
           <option value="2">2x</option>
@@ -194,8 +220,31 @@
     <script type="text/javascript" src="../dist/tui-image-editor.js"></script>
     <script type="text/javascript" src="js/theme/white-theme.js"></script>
     <script type="text/javascript" src="js/theme/black-theme.js"></script>
+    <script type="text/javascript" src="js/theme/locale_zh.js"></script>
     <script>
-      var imageEditor = new tui.ImageEditor('#tui-image-editor-container', {
+      var currentLang = localStorage.getItem('tui-editor-lang') || 'zh';
+      var btnLang = document.getElementById('btn-toggle-lang');
+      
+      if (currentLang === 'zh') {
+          btnLang.innerText = '🇬🇧 Switch to English';
+      } else {
+          btnLang.innerText = '🇨🇳 切换至中文';
+          // Update slice UI texts to English
+          document.getElementById('slice-info-text').innerText = 'Usage: Draw shapes using Shape tool to create slices. Select a shape to resize or export.';
+          document.getElementById('btn-export-slices').innerText = 'Batch Export Slices';
+          document.getElementById('slice-panel-title').innerText = 'Slice Export Properties';
+          document.getElementById('slice-panel-desc').innerText = 'Based on actual image physical pixels';
+          document.getElementById('slice-scale-label').innerText = 'Scale';
+          document.getElementById('btn-copy-slice').innerText = 'Copy to Clipboard';
+          document.getElementById('btn-download-single').innerText = 'Download Single';
+      }
+      
+      btnLang.addEventListener('click', function() {
+          localStorage.setItem('tui-editor-lang', currentLang === 'zh' ? 'en' : 'zh');
+          location.reload();
+      });
+
+      var editorOptions = {
         includeUI: {
           loadImage: {
             path: 'img/sampleImage2.png',
@@ -208,7 +257,19 @@
         cssMaxWidth: 700,
         cssMaxHeight: 500,
         usageStatistics: false,
-      });
+      };
+      
+      if (currentLang === 'zh') {
+          editorOptions.includeUI.locale = locale_zh;
+      }
+
+      var imageEditor = new tui.ImageEditor('#tui-image-editor-container', editorOptions);
+
+      // Set custom text logo
+      var logoWrapper = document.querySelector('.tui-image-editor-header-logo');
+      if (logoWrapper) {
+          logoWrapper.setAttribute('data-logo-text', currentLang === 'zh' ? '图片编辑' : 'Image Editor');
+      }
 
       window.onresize = function () {
         imageEditor.ui.resizeEditor();

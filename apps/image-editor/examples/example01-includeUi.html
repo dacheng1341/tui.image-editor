@@ -50,10 +50,34 @@
       .custom-nav-btn.btn-main:hover {
         background: #e64a19;
       }
+      .custom-nav-btn.btn-lang {
+        background: #4caf50;
+      }
+      .custom-nav-btn.btn-lang:hover {
+        background: #388e3c;
+      }
+      
+      /* Hide default logo and add text logo */
+      .tui-image-editor-header-logo img {
+        display: none !important;
+      }
+      .tui-image-editor-header-logo {
+        display: flex !important;
+        align-items: center;
+      }
+      .tui-image-editor-header-logo::after {
+        content: attr(data-logo-text);
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+        font-family: 'Noto Sans', sans-serif;
+        letter-spacing: 1px;
+      }
     </style>
   </head>
   <body>
     <div class="custom-nav-panel">
+      <button id="btn-toggle-lang" class="custom-nav-btn btn-lang"></button>
       <a href="example04-slice.html" class="custom-nav-btn">➡️ 进入切片模式 (Slice Mode)</a>
       <a href="https://dacbbox.com" target="_blank" class="custom-nav-btn btn-main">🏠 大程开源百宝箱 (dacbbox.com)</a>
     </div>
@@ -77,22 +101,49 @@
     <script type="text/javascript" src="../dist/tui-image-editor.js"></script>
     <script type="text/javascript" src="js/theme/white-theme.js"></script>
     <script type="text/javascript" src="js/theme/black-theme.js"></script>
+    <script type="text/javascript" src="js/theme/locale_zh.js"></script>
     <script>
-      // Image editor
-      var imageEditor = new tui.ImageEditor('#tui-image-editor-container', {
+      var currentLang = localStorage.getItem('tui-editor-lang') || 'zh';
+      var btnLang = document.getElementById('btn-toggle-lang');
+      
+      if (currentLang === 'zh') {
+          btnLang.innerText = '🇬🇧 Switch to English';
+      } else {
+          btnLang.innerText = '🇨🇳 切换至中文';
+      }
+      
+      btnLang.addEventListener('click', function() {
+          localStorage.setItem('tui-editor-lang', currentLang === 'zh' ? 'en' : 'zh');
+          location.reload();
+      });
+
+      var editorOptions = {
         includeUI: {
           loadImage: {
             path: 'img/sampleImage2.png',
             name: 'SampleImage',
           },
-          theme: blackTheme, // or whiteTheme
+          theme: blackTheme, 
           initMenu: 'filter',
           menuBarPosition: 'bottom',
         },
         cssMaxWidth: 700,
         cssMaxHeight: 500,
         usageStatistics: false,
-      });
+      };
+      
+      if (currentLang === 'zh') {
+          editorOptions.includeUI.locale = locale_zh;
+      }
+      
+      var imageEditor = new tui.ImageEditor('#tui-image-editor-container', editorOptions);
+
+      // Set custom text logo
+      var logoWrapper = document.querySelector('.tui-image-editor-header-logo');
+      if (logoWrapper) {
+          logoWrapper.setAttribute('data-logo-text', currentLang === 'zh' ? '图片编辑' : 'Image Editor');
+      }
+
       window.onresize = function () {
         imageEditor.ui.resizeEditor();
       };
