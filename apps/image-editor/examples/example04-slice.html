@@ -120,11 +120,11 @@
       <h4>切片属性 (Slice Export)</h4>
       <div style="font-size: 11px; color: #999; margin-bottom: 10px;">基于原图的实际分辨率</div>
       <div class="input-group">
-        <span>宽度 (W)</span>
+        <span id="label-w">宽度 (W)</span>
         <input type="number" id="slice-w" min="1" step="1" />
       </div>
       <div class="input-group">
-        <span>高度 (H)</span>
+        <span id="label-h">高度 (H)</span>
         <input type="number" id="slice-h" min="1" step="1" />
       </div>
       <div class="input-group">
@@ -187,6 +187,8 @@
       var inputW = document.getElementById('slice-w');
       var inputH = document.getElementById('slice-h');
       var selectScale = document.getElementById('slice-scale');
+      var labelW = document.getElementById('label-w');
+      var labelH = document.getElementById('label-h');
       
       // Get all shape objects
       function getSliceObjects() {
@@ -194,6 +196,20 @@
           return fabricCanvas.getObjects().filter(function(o) {
               return ['rect', 'circle', 'triangle'].indexOf(o.type) > -1 && o.width > 0 && o.height > 0;
           });
+      }
+      
+      // Dynamic labels
+      function updatePanelLabels(type) {
+          if (type === 'circle') {
+              labelW.innerText = '半径X (Rx)';
+              labelH.innerText = '半径Y (Ry)';
+          } else if (type === 'triangle') {
+              labelW.innerText = '底边 (Base)';
+              labelH.innerText = '高度 (H)';
+          } else {
+              labelW.innerText = '宽度 (W)';
+              labelH.innerText = '高度 (H)';
+          }
       }
 
       // Update inputs
@@ -204,11 +220,33 @@
           if (obj) {
               var w = obj.width * obj.scaleX;
               var h = obj.height * obj.scaleY;
-              // Circle width calculation in fabric is radius * 2
-              inputW.value = Math.max(1, Math.round(w));
-              inputH.value = Math.max(1, Math.round(h));
+              
+              updatePanelLabels(obj.type);
+              
+              if (obj.type === 'circle') {
+                  inputW.value = Math.max(1, Math.round(w / 2));
+                  inputH.value = Math.max(1, Math.round(h / 2));
+              } else {
+                  inputW.value = Math.max(1, Math.round(w));
+                  inputH.value = Math.max(1, Math.round(h));
+              }
           }
       }
+
+      // Automatically load sizes right after drawing
+      imageEditor.on('objectAdded', function(props) {
+          if (['rect', 'circle', 'triangle'].indexOf(props.type) > -1) {
+              setTimeout(function() {
+                  var fabricCanvas = imageEditor._graphics.getCanvas();
+                  var activeObj = fabricCanvas.getActiveObject();
+                  if (activeObj && activeObj.id === props.id) {
+                      activeSliceId = props.id;
+                      slicePanel.style.display = 'flex';
+                      updateInputsFromObject(props.id);
+                  }
+              }, 100);
+          }
+      });
 
       imageEditor.on('objectActivated', function(props) {
           if (['rect', 'circle', 'triangle'].indexOf(props.type) > -1) {
@@ -243,9 +281,12 @@
           var fabricCanvas = imageEditor._graphics.getCanvas();
           var obj = fabricCanvas.getObjects().find(function(o) { return o.id === activeSliceId; });
           if (obj) {
+              var targetW = obj.type === 'circle' ? newW * 2 : newW;
+              var targetH = obj.type === 'circle' ? newH * 2 : newH;
+              
               obj.set({
-                  scaleX: newW / obj.width,
-                  scaleY: newH / obj.height
+                  scaleX: targetW / obj.width,
+                  scaleY: targetH / obj.height
               });
               obj.setCoords();
               fabricCanvas.renderAll();
@@ -270,6 +311,48 @@
         return new Blob([uInt8Array], { type: mimeString });
       }
 
+      // Offscreen masking for circle and triangle transparency
+      function maskImageWithShape(dataUrl, shapeType) {
+          return new Promise(function(resolve, reject) {
+              var img = new Image();
+              img.onload = function() {
+                  var canvas = document.createElement('canvas');
+                  canvas.width = img.width;
+                  canvas.height = img.height;
+                  var ctx = canvas.getContext('2d');
+                  
+                  // Draw the rectangular slice
+                  ctx.drawImage(img, 0, 0);
+                  
+                  // Use destination-in to crop the transparent background
+                  ctx.globalCompositeOperation = 'destination-in';
+                  ctx.fillStyle = 'black';
+                  ctx.beginPath();
+                  
+                  var w = img.width;
+                  var h = img.height;
+                  
+                  if (shapeType === 'circle') {
+                      if (ctx.ellipse) {
+                          ctx.ellipse(w/2, h/2, w/2, h/2, 0, 0, 2*Math.PI);
+                      } else {
+                          ctx.arc(w/2, h/2, w/2, 0, 2*Math.PI);
+                      }
+                  } else if (shapeType === 'triangle') {
+                      ctx.moveTo(w/2, 0);
+                      ctx.lineTo(w, h);
+                      ctx.lineTo(0, h);
+                  }
+                  ctx.closePath();
+                  ctx.fill();
+                  
+                  resolve(canvas.toDataURL('image/png'));
+              };
+              img.onerror = reject;
+              img.src = dataUrl;
+          });
+      }
+
       // Safe export logic
       async function exportSliceDataUrl(id, scaleMultiplier) {
           var fabricCanvas = imageEditor._graphics.getCanvas();
@@ -278,13 +361,14 @@
 
           var rect = sliceObj.getBoundingRect();
           var oldOpacity = sliceObj.opacity;
+          var oldStrokeWidth = sliceObj.strokeWidth;
           
-          sliceObj.set({ opacity: 0 });
+          sliceObj.set({ opacity: 0, strokeWidth: 0 });
           fabricCanvas.renderAll();
           
           var dataUrl = null;
           try {
-              dataUrl = fabricCanvas.toDataURL({
+              var rectDataUrl = fabricCanvas.toDataURL({
                   format: 'png',
                   left: rect.left,
                   top: rect.top,
@@ -292,11 +376,17 @@
                   height: rect.height,
                   multiplier: scaleMultiplier
               });
+              
+              if (sliceObj.type === 'circle' || sliceObj.type === 'triangle') {
+                  dataUrl = await maskImageWithShape(rectDataUrl, sliceObj.type);
+              } else {
+                  dataUrl = rectDataUrl;
+              }
           } catch(e) {
               console.error("Export Failed:", e);
           }
           
-          sliceObj.set({ opacity: oldOpacity });
+          sliceObj.set({ opacity: oldOpacity, strokeWidth: oldStrokeWidth });
           fabricCanvas.renderAll();
           
           return dataUrl;
@@ -322,7 +412,7 @@
               try {
                   var dataUrl = await exportSliceDataUrl(slices[i].id, scale);
                   if (dataUrl) {
-                      saveAs(base64ToBlob(dataUrl), 'slice_' + (i + 1) + '@' + scale + 'x.png');
+                      saveAs(base64ToBlob(dataUrl), 'slice_' + (i + 1) + '_' + slices[i].type + '@' + scale + 'x.png');
                       validSlices++;
                   }
               } catch (e) {
@@ -339,9 +429,12 @@
       document.getElementById('btn-download-single').addEventListener('click', async function() {
           if (!activeSliceId) return;
           var scale = parseFloat(selectScale.value) || 1;
+          var fabricCanvas = imageEditor._graphics.getCanvas();
+          var obj = fabricCanvas.getObjects().find(function(o) { return o.id === activeSliceId; });
+          
           var dataUrl = await exportSliceDataUrl(activeSliceId, scale);
           if (dataUrl) {
-              saveAs(base64ToBlob(dataUrl), 'slice_' + activeSliceId + '@' + scale + 'x.png');
+              saveAs(base64ToBlob(dataUrl), 'slice_' + activeSliceId + '_' + (obj ? obj.type : 'rect') + '@' + scale + 'x.png');
           }
       });
       
