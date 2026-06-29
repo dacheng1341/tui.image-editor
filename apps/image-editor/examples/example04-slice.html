@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>4. Batch Slice Export (Figma style)</title>
+    <title>4. Advanced Figma-like Slice Export</title>
     <link
       type="text/css"
       href="https://uicdn.toast.com/tui-color-picker/v2.2.6/tui-color-picker.css"
@@ -47,13 +47,94 @@
         font-size: 14px;
         color: #333;
       }
+      
+      .slice-panel {
+        position: absolute;
+        right: 20px;
+        top: 80px;
+        z-index: 1000;
+        background: #fff;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        font-family: 'Noto Sans', sans-serif;
+        display: none; /* hidden by default */
+        flex-direction: column;
+        gap: 10px;
+        width: 200px;
+      }
+      .slice-panel h4 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #333;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+      }
+      .input-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #666;
+      }
+      .input-group input {
+        width: 60px;
+        padding: 4px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        text-align: right;
+      }
+      .input-group select {
+        padding: 4px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        width: 70px;
+      }
+      .slice-panel .btn-copy {
+        margin-top: 5px;
+        background: #fff;
+        color: #00a9ff;
+        border: 1px solid #00a9ff;
+        padding: 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+        text-align: center;
+      }
+      .slice-panel .btn-copy:hover {
+        background: #f0f8ff;
+      }
     </style>
   </head>
   <body>
     <div class="slice-bar">
-      <div class="info">使用方法：先导入图片，然后在菜单选择 Shape (形状)，画几个透明填充的矩形作为切片框，最后点击右侧按钮。</div>
-      <button id="btn-export-slices">批量导出切片</button>
+      <div class="info">使用方法：使用 Shape 工具画任意形状（矩形/圆形/三角形）作为切片，调整好后选中它，可以修改尺寸或直接导出。</div>
+      <button id="btn-export-slices">批量导出切片 (Batch Export)</button>
     </div>
+    
+    <div class="slice-panel" id="slice-panel">
+      <h4>切片属性 (Slice Export)</h4>
+      <div class="input-group">
+        <span>宽度 (W)</span>
+        <input type="number" id="slice-w" min="1" step="1" />
+      </div>
+      <div class="input-group">
+        <span>高度 (H)</span>
+        <input type="number" id="slice-h" min="1" step="1" />
+      </div>
+      <div class="input-group">
+        <span>导出倍率</span>
+        <select id="slice-scale">
+          <option value="1">1x</option>
+          <option value="2">2x</option>
+          <option value="3">3x</option>
+          <option value="4">4x</option>
+        </select>
+      </div>
+      <button class="btn-copy" id="btn-copy-slice">复制到剪贴板 (Copy)</button>
+      <button class="btn-copy" id="btn-download-single">单张下载 (Download)</button>
+    </div>
+
     <div id="tui-image-editor-container"></div>
     <script
       type="text/javascript"
@@ -94,14 +175,79 @@
         imageEditor.ui.resizeEditor();
       };
 
-      // 跟踪所有添加的矩形
+      // 跟踪所有添加的形状切片
       var sliceIds = new Set();
+      var activeSliceId = null;
+      var isUpdatingInput = false;
+
+      // 各种 UI 元素
+      var slicePanel = document.getElementById('slice-panel');
+      var inputW = document.getElementById('slice-w');
+      var inputH = document.getElementById('slice-h');
+      var selectScale = document.getElementById('slice-scale');
       
+      // 监听新形状创建，将所有 rect, circle, triangle 视为切片蒙版
       imageEditor.on('objectAdded', function(props) {
-        if (props.type === 'rect') {
+        if (['rect', 'circle', 'triangle'].indexOf(props.type) > -1) {
             sliceIds.add(props.id);
         }
       });
+      
+      // 监听对象选中
+      imageEditor.on('objectActivated', function(props) {
+          if (sliceIds.has(props.id)) {
+              activeSliceId = props.id;
+              slicePanel.style.display = 'flex';
+              updateInputsFromObject(props.id);
+          } else {
+              activeSliceId = null;
+              slicePanel.style.display = 'none';
+          }
+      });
+      
+      // 监听对象取消选中
+      imageEditor.on('selectionCleared', function() {
+          activeSliceId = null;
+          slicePanel.style.display = 'none';
+      });
+      
+      // 监听对象缩放，实时更新输入框
+      imageEditor.on('objectScaled', function(props) {
+          if (activeSliceId === props.id) {
+              updateInputsFromObject(props.id);
+          }
+      });
+
+      function updateInputsFromObject(id) {
+          if (isUpdatingInput) return;
+          var fabricCanvas = imageEditor._graphics.getCanvas();
+          var obj = fabricCanvas.getObjects().find(function(o) { return o.id === id; });
+          if (obj) {
+              inputW.value = Math.round(obj.width * obj.scaleX);
+              inputH.value = Math.round(obj.height * obj.scaleY);
+          }
+      }
+
+      // 监听输入框手动修改尺寸
+      function applyInputSize() {
+          if (!activeSliceId) return;
+          var newW = parseFloat(inputW.value);
+          var newH = parseFloat(inputH.value);
+          if (isNaN(newW) || isNaN(newH) || newW <= 0 || newH <= 0) return;
+          
+          isUpdatingInput = true;
+          var fabricCanvas = imageEditor._graphics.getCanvas();
+          var obj = fabricCanvas.getObjects().find(function(o) { return o.id === activeSliceId; });
+          if (obj) {
+              obj.set({ scaleX: newW / obj.width, scaleY: newH / obj.height });
+              obj.setCoords();
+              fabricCanvas.renderAll();
+          }
+          isUpdatingInput = false;
+      }
+      
+      inputW.addEventListener('input', applyInputSize);
+      inputH.addEventListener('input', applyInputSize);
 
       function base64ToBlob(data) {
         var mimeString = '';
@@ -123,12 +269,53 @@
         return new Blob([uInt8Array], { type: mimeString });
       }
 
+      // 核心导出逻辑：利用 Fabric.js clipPath 实现真正的异形切片导出 (背景透明)
+      async function exportSliceDataUrl(id, scaleMultiplier) {
+          var fabricCanvas = imageEditor._graphics.getCanvas();
+          var sliceObj = fabricCanvas.getObjects().find(function(o) { return o.id === id; });
+          if (!sliceObj) return null;
+
+          // 获取该形状的绝对包围盒
+          var rect = sliceObj.getBoundingRect();
+          
+          // 深度克隆该形状用于作为 clipPath 蒙版
+          var clone = await new Promise(function(resolve) { sliceObj.clone(resolve); });
+          clone.absolutePositioned = true;
+          
+          // 记录原来的透明度并隐藏形状，这样图片上就不会带有红色的形状边框
+          var oldOpacity = sliceObj.opacity;
+          sliceObj.set({ opacity: 0 });
+          
+          // 核心！设置全局遮罩
+          fabricCanvas.clipPath = clone;
+          fabricCanvas.renderAll();
+          
+          // 从 Canvas 导出被遮罩后留下的纯净矩形区域，其余被切掉的部分是透明的
+          var dataUrl = fabricCanvas.toDataURL({
+              format: 'png',
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
+              multiplier: scaleMultiplier
+          });
+          
+          // 恢复原状
+          fabricCanvas.clipPath = null;
+          sliceObj.set({ opacity: oldOpacity });
+          fabricCanvas.renderAll();
+          
+          return dataUrl;
+      }
+
+      // 批量导出
       document.getElementById('btn-export-slices').addEventListener('click', async function() {
           var ids = Array.from(sliceIds);
+          var scale = parseFloat(selectScale.value) || 1;
           var validSlices = 0;
           
           if(ids.length === 0) {
-              alert("未找到矩形切片框！请先使用 Shape(形状) 工具在图片上画一些矩形框。");
+              alert("未找到切片框！请先画一些形状作为切片。");
               return;
           }
 
@@ -139,44 +326,61 @@
           for (var i = 0; i < ids.length; i++) {
               var id = ids[i];
               try {
-                  var props = imageEditor.getObjectProperties(id, ['left', 'top', 'width', 'height', 'scaleX', 'scaleY', 'strokeWidth']);
-                  
-                  // 计算实际宽高和绝对位置 (以中心点为基准推算左上角坐标)
-                  var w = props.width * props.scaleX;
-                  var h = props.height * props.scaleY;
-                  var left = props.left - w / 2;
-                  var top = props.top - h / 2;
-                  
-                  // 导出切片前，先将切片框本身隐藏起来，以免导出的图片里带个红框
-                  try {
-                      await imageEditor.setObjectPropertiesQuietly(id, { opacity: 0 });
-                  } catch (e) {}
-                  
-                  // 获取指定坐标的 base64 图像
-                  var dataUrl = imageEditor.toDataURL({
-                      left: left,
-                      top: top,
-                      width: w,
-                      height: h
-                  });
-                  
-                  saveAs(base64ToBlob(dataUrl), 'slice_' + (i + 1) + '.png');
-                  validSlices++;
-
-                  // 导出后恢复显示框
-                  try {
-                      await imageEditor.setObjectPropertiesQuietly(id, { opacity: 1 });
-                  } catch (e) {}
-
+                  var dataUrl = await exportSliceDataUrl(id, scale);
+                  if (dataUrl) {
+                      saveAs(base64ToBlob(dataUrl), 'slice_' + (i + 1) + '@' + scale + 'x.png');
+                      validSlices++;
+                  }
               } catch (e) {
-                  // 对象可能已被用户手动删除，忽略
-                  console.log("Slice " + id + " skipped.");
+                  console.error(e);
               }
           }
           
-          btn.innerText = "批量导出切片";
+          btn.innerText = "批量导出切片 (Batch Export)";
           btn.disabled = false;
           alert("成功导出了 " + validSlices + " 张切片！");
+      });
+      
+      // 单张下载
+      document.getElementById('btn-download-single').addEventListener('click', async function() {
+          if (!activeSliceId) return;
+          var scale = parseFloat(selectScale.value) || 1;
+          var dataUrl = await exportSliceDataUrl(activeSliceId, scale);
+          if (dataUrl) {
+              saveAs(base64ToBlob(dataUrl), 'slice_' + activeSliceId + '@' + scale + 'x.png');
+          }
+      });
+      
+      // 复制到剪贴板
+      document.getElementById('btn-copy-slice').addEventListener('click', async function() {
+          if (!activeSliceId) return;
+          
+          if (!navigator.clipboard || !navigator.clipboard.write) {
+              alert("您的浏览器不支持复制图片到剪贴板。请尝试使用下载功能。");
+              return;
+          }
+          
+          var btn = this;
+          btn.innerText = "复制中...";
+          
+          try {
+              var scale = parseFloat(selectScale.value) || 1;
+              var dataUrl = await exportSliceDataUrl(activeSliceId, scale);
+              if (dataUrl) {
+                  var blob = base64ToBlob(dataUrl);
+                  await navigator.clipboard.write([
+                      new ClipboardItem({
+                          [blob.type]: blob
+                      })
+                  ]);
+                  btn.innerText = "复制成功! (Copied)";
+                  setTimeout(function() { btn.innerText = "复制到剪贴板 (Copy)"; }, 2000);
+              }
+          } catch(e) {
+              console.error(e);
+              alert("复制失败: " + e.message);
+              btn.innerText = "复制到剪贴板 (Copy)";
+          }
       });
     </script>
   </body>
