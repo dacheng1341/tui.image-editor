@@ -51,7 +51,7 @@
     "build:image-editor": "lerna run --scope tui-image-editor build",
     "build:react": "lerna run --scope @toast-ui/react-image-editor build",
     "build:vue": "lerna run --scope @toast-ui/vue-image-editor build",
-    "build:cf-pages": "npm run build && rm -rf cf-pages && mkdir cf-pages && cp -r apps/image-editor/dist cf-pages/dist && cp -r apps/image-editor/examples cf-pages/examples && echo \"/ /examples/example01-includeUi.html 302\" > cf-pages/_redirects"
+    "build:cf-pages": "NODE_OPTIONS=--openssl-legacy-provider npm run build && rm -rf cf-pages && mkdir cf-pages && cp -r apps/image-editor/dist cf-pages/dist && cp -r apps/image-editor/examples cf-pages/examples && echo \"/ /examples/example01-includeUi.html 302\" > cf-pages/_redirects"
   },
   "workspaces": [
     "apps/*"
